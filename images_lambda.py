@@ -56,25 +56,22 @@ def process_image_name(name):
     object_id = values[1]
     camera_id = values[2]
     store_id = values[3]
-    print("{}, {}, {}, {}".format(timestamp, object_id, camera_id, store_id))
-    return timestamp, store_id, camera_id, object_id
+    owner_uid = values[4]
+    print("{}, {}, {}, {}, {}".format(timestamp, object_id, camera_id, store_id, owner_uid))
+    return timestamp, store_id, camera_id, object_id, owner_uid
 
 
 def process(event, context):
     print(event)
 
-    # getting the file name from the event in s3
     record = event['Records'][0]['s3']['object']['key']
     record_for_processing = str(record).split("/")[1]
-
-    # process the image name for params
-    timestamp, store_id, camera_id, object_id = process_image_name(record_for_processing)
+    timestamp, store_id, camera_id, object_id, owner_uid = process_image_name(record_for_processing)
 
     print(record)
 
     try:
 
-        # send the image to rekognition to get emotions and other data
         anots = detect_face_labels(record)
         print(anots)
         age_low = anots['age_low']
@@ -89,18 +86,16 @@ def process(event, context):
         angry = anots['angry']
         sad = anots['sad']
 
-        # construct the values for query
-        values = "{},{},{},{},{},{},{},{},{},{},{},{},{},'{}',{}".format(store_id, camera_id, object_id, timestamp,
-                                                                         age_low, age_high, smile, calm, happy,
-                                                                         confused, disgusted, angry, sad,
-                                                                         gender, surprised)
+        values = "{}{},{},{},{},{},{},{},{},{},{},{},{},{},'{}',{}".format(owner_uid, store_id, camera_id, object_id,
+                                                                           timestamp,
+                                                                           age_low, age_high, smile, calm, happy,
+                                                                           confused, disgusted, angry, sad,
+                                                                           gender, surprised)
 
-        # construct the fields for query
-        fields = "store_id, camera_id, object_id, timestamp, age_low, age_high, smile, calm, happy, confused, disgusted, angry, sad, gender, surprised"
+        fields = "owner_uid, store_id, camera_id, object_id, timestamp, age_low, age_high, smile, calm, happy, confused, disgusted, angry, sad, gender, surprised"
 
         query = "INSERT INTO {} ({}) VALUES ({})".format(os.environ['DB_TABLE'], fields, values)
         print(query)
-
         # getting connection to my sql db
         conn = db_connect()
         if conn == "":

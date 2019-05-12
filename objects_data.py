@@ -29,14 +29,15 @@ def handler(event, context):
         json_object = json.loads(decoded_object)
 
         # get the fields
+        owner_uid = json_object['owner_uid']
         store_id = json_object['store_id']
         camera_id = json_object['camera_id']
         object_id = json_object['object_id']
         timestamp = json_object['timestamp']
 
-        values = "{},{},{},{}".format(store_id, camera_id, object_id, timestamp)
+        values = "{},{},{},{},{}".format(owner_uid, store_id, camera_id, object_id, timestamp)
 
-        fields = "store_id, camera_id, object_id, timestamp"
+        fields = "owner_uid, store_id, camera_id, object_id, timestamp"
 
         query = "INSERT INTO {} ({}) VALUES ({})".format(os.environ['DB_TABLE'], fields, values)
         print(query)
@@ -49,3 +50,7 @@ def handler(event, context):
             cur.execute(query)
             conn.commit()
             print("committed")
+
+
+if __name__ == "__main__":
+    handler("", "")
