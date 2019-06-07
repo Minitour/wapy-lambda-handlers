@@ -25,28 +25,32 @@ def detect_face_labels(fileName):
     response = client.detect_faces(Attributes=["ALL", "DEFAULT"],
                                    Image={'S3Object': {'Bucket': os.environ['BUCKET'], 'Name': fileName}})
 
-    labels = {}
+    print(response)
+    faces = []
+    for i in range(len(response['FaceDetails'])):
+        labels = {}
+        # age range in form of low and high
+        print(response['FaceDetails'][i]['AgeRange'])
+        labels.update({"age_low": response['FaceDetails'][i]['AgeRange']['Low']})
+        labels.update({"age_high": response['FaceDetails'][i]['AgeRange']['High']})
 
-    # age range in form of low and high
-    print(response['FaceDetails'][0]['AgeRange'])
-    labels.update({"age_low": response['FaceDetails'][0]['AgeRange']['Low']})
-    labels.update({"age_high": response['FaceDetails'][0]['AgeRange']['High']})
+        # gender in form of M-male, F-female
+        print(response['FaceDetails'][i]['Gender'])
+        labels.update({"gender": str(response['FaceDetails'][i]['Gender']['Value']).lower()[0]})
 
-    # gender in form of M-male, F-female
-    print(response['FaceDetails'][0]['Gender'])
-    labels.update({"gender": str(response['FaceDetails'][0]['Gender']['Value']).lower()[0]})
+        # smile - if the person if smiling
+        labels.update({"smile": response['FaceDetails'][i]['Smile']['Value']})
+        print(response['FaceDetails'][i]['Smile'])
 
-    # smile - if the person if smiling
-    labels.update({"smile": response['FaceDetails'][0]['Smile']['Value']})
-    print(response['FaceDetails'][0]['Smile'])
+        # other emotions
+        print(response['FaceDetails'][i]['Emotions'])
+        emotions = response['FaceDetails'][i]['Emotions']
+        for v in emotions:
+            labels.update({str(v['Type']).lower(): v['Confidence']})
 
-    # other emotions
-    print(response['FaceDetails'][0]['Emotions'])
-    emotions = response['FaceDetails'][0]['Emotions']
-    for v in emotions:
-        labels.update({str(v['Type']).lower(): v['Confidence']})
-
-    return labels
+        faces.append(labels)
+    print("got {} faces in picture".format(len(faces)))
+    return faces
 
 
 def process_image_name(name):
@@ -57,7 +61,6 @@ def process_image_name(name):
     values = str(raw).split("_")
     print(values)
     timestamp = values[0]
-    timestamp = datetime.datetime.fromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S')
     object_id = values[1]
     camera_id = values[2]
     store_id = values[3]
@@ -80,44 +83,48 @@ def process(event, context):
     try:
 
         anots = detect_face_labels(record)
-        print(anots)
-        age_low = anots['age_low']
-        age_high = anots['age_high']
-        smile = anots['smile']
-        gender = anots['gender']
-        calm = anots['calm']
-        happy = anots['happy']
-        surprised = anots['surprised']
-        confused = anots['confused']
-        disgusted = anots['disgusted']
-        angry = anots['angry']
-        sad = anots['sad']
+        timestamp_increasment = 0
+        for anot in anots:
+            print(anot)
+            age_low = anot['age_low']
+            age_high = anot['age_high']
+            smile = anot['smile']
+            gender = anot['gender']
+            calm = anot['calm']
+            happy = anot['happy']
+            surprised = anot['surprised']
+            confused = anot['confused']
+            disgusted = anot['disgusted']
+            angry = anot['angry']
+            sad = anot['sad']
+            temp_timestamp = datetime.datetime.fromtimestamp(int(timestamp) + timestamp_increasment).strftime(
+                '%Y-%m-%d %H:%M:%S')
+            values = '"{}","{}","{}","{}","{}",{},{},{},{},{},{},{},{},{},"{}",{}'.format(owner_uid, store_id,
+                                                                                          camera_id, object_id,
+                                                                                          temp_timestamp,
+                                                                                          age_low, age_high, smile,
+                                                                                          calm, happy,
+                                                                                          confused, disgusted, angry,
+                                                                                          sad,
+                                                                                          gender, surprised)
+            fields = "owner_uid, store_id, camera_id, object_id, timestamp, age_low, age_high, smile, calm, happy, confused, disgusted, angry, sad, gender, surprised"
+            query = "INSERT INTO {} ({}) VALUES ({})".format(os.environ['DB_TABLE'], fields, values)
+            print(query)
+            # getting connection to my sql db
+            conn = db_connect()
+            if conn == "":
+                print("no connection has been made")
+                sys.exit(1)
 
-        values = '"{}","{}","{}","{}","{}",{},{},{},{},{},{},{},{},{},"{}",{}'.format(owner_uid, store_id, camera_id,
-                                                                                      object_id, timestamp,
-                                                                                      age_low, age_high, smile, calm,
-                                                                                      happy,
-                                                                                      confused, disgusted, angry, sad,
-                                                                                      gender, surprised)
-        print(values)
-        fields = "owner_uid, store_id, camera_id, object_id, timestamp, age_low, age_high, smile, calm, happy, confused, disgusted, angry, sad, gender, surprised"
-        print(fields)
-        query = "INSERT INTO {} ({}) VALUES ({})".format(os.environ['DB_TABLE'], fields, values)
-        print(query)
-        # getting connection to my sql db
-        conn = db_connect()
-        if conn == "":
-            print("no connection has been made")
-            sys.exit(1)
+            # posting the data to the my sql table
+            with conn.cursor() as cur:
+                cur.execute(query)
+                conn.commit()
+                print("committed")
 
-        # posting the data to the my sql table
-        with conn.cursor() as cur:
-            cur.execute(query)
-            conn.commit()
-            print("committed")
-            cur.execute("select * from {}".format(os.environ['DB_TABLE']))
-            for row in cur:
-                print(row)
-        print("finished with process")
+            print("finished with process")
+            timestamp_increasment += 1
+        if not anots:
+            print("no faces has been detected!")
     except Exception as ex:
         print('EXCEPTION: {}'.format(ex))
