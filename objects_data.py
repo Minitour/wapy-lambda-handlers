@@ -3,6 +3,7 @@ import pymysql
 import os
 import base64
 import json
+import datetime
 
 
 def get_connection():
@@ -34,8 +35,9 @@ def handler(event, context):
         camera_id = json_object['camera_id']
         object_id = json_object['object_id']
         timestamp = json_object['timestamp']
+        timestamp = datetime.datetime.fromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S')
 
-        values = "{},{},{},{},{}".format(owner_uid, store_id, camera_id, object_id, timestamp)
+        values = '"{}","{}","{}","{}","{}"'.format(owner_uid, store_id, camera_id, object_id, timestamp)
 
         fields = "owner_uid, store_id, camera_id, object_id, timestamp"
 

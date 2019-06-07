@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import pymysql
+import datetime
 
 
 def db_connect():
@@ -50,9 +51,13 @@ def detect_face_labels(fileName):
 
 def process_image_name(name):
     # frame_timestamp, object_id, CAMERA_ID, STORE_ID
+    print(name)
     raw = str(name).split(".")[0]
+    print(raw)
     values = str(raw).split("_")
+    print(values)
     timestamp = values[0]
+    timestamp = datetime.datetime.fromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S')
     object_id = values[1]
     camera_id = values[2]
     store_id = values[3]
@@ -65,7 +70,9 @@ def process(event, context):
     print(event)
 
     record = event['Records'][0]['s3']['object']['key']
+    print(record)
     record_for_processing = str(record).split("/")[1]
+    print(record_for_processing)
     timestamp, store_id, camera_id, object_id, owner_uid = process_image_name(record_for_processing)
 
     print(record)
@@ -86,19 +93,21 @@ def process(event, context):
         angry = anots['angry']
         sad = anots['sad']
 
-        values = "{}{},{},{},{},{},{},{},{},{},{},{},{},{},'{}',{}".format(owner_uid, store_id, camera_id, object_id,
-                                                                           timestamp,
-                                                                           age_low, age_high, smile, calm, happy,
-                                                                           confused, disgusted, angry, sad,
-                                                                           gender, surprised)
-
+        values = '"{}","{}","{}","{}","{}",{},{},{},{},{},{},{},{},{},"{}",{}'.format(owner_uid, store_id, camera_id,
+                                                                                      object_id, timestamp,
+                                                                                      age_low, age_high, smile, calm,
+                                                                                      happy,
+                                                                                      confused, disgusted, angry, sad,
+                                                                                      gender, surprised)
+        print(values)
         fields = "owner_uid, store_id, camera_id, object_id, timestamp, age_low, age_high, smile, calm, happy, confused, disgusted, angry, sad, gender, surprised"
-
+        print(fields)
         query = "INSERT INTO {} ({}) VALUES ({})".format(os.environ['DB_TABLE'], fields, values)
         print(query)
         # getting connection to my sql db
         conn = db_connect()
         if conn == "":
+            print("no connection has been made")
             sys.exit(1)
 
         # posting the data to the my sql table
@@ -109,6 +118,6 @@ def process(event, context):
             cur.execute("select * from {}".format(os.environ['DB_TABLE']))
             for row in cur:
                 print(row)
-
+        print("finished with process")
     except Exception as ex:
         print('EXCEPTION: {}'.format(ex))
