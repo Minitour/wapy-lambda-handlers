@@ -21,51 +21,51 @@ def db_connect():
 
 def detect_face_labels(fileName):
     client = boto3.client('rekognition')
+    print("start to detect faces in picture: {}".format(fileName))
 
     response = client.detect_faces(Attributes=["ALL", "DEFAULT"],
                                    Image={'S3Object': {'Bucket': os.environ['BUCKET'], 'Name': fileName}})
 
-    print(response)
+    print("got {} faces in picture".format(len(response['FaceDetails'])))
+
     faces = []
     for i in range(len(response['FaceDetails'])):
         labels = {}
         # age range in form of low and high
-        print(response['FaceDetails'][i]['AgeRange'])
+        print("got age range for {} face - low:{}, high:{}".format(i, response['FaceDetails'][i]['AgeRange']['Low'],
+                                                                   response['FaceDetails'][i]['AgeRange']['High']))
         labels.update({"age_low": response['FaceDetails'][i]['AgeRange']['Low']})
         labels.update({"age_high": response['FaceDetails'][i]['AgeRange']['High']})
 
         # gender in form of M-male, F-female
-        print(response['FaceDetails'][i]['Gender'])
+        print("gender of person: {}".format(response['FaceDetails'][i]['Gender']))
         labels.update({"gender": str(response['FaceDetails'][i]['Gender']['Value']).lower()[0]})
 
         # smile - if the person if smiling
         labels.update({"smile": response['FaceDetails'][i]['Smile']['Value']})
-        print(response['FaceDetails'][i]['Smile'])
+        print("smiling: {}".format(response['FaceDetails'][i]['Smile']))
 
         # other emotions
-        print(response['FaceDetails'][i]['Emotions'])
+        print("emotions: {}".format(json.dumps(response['FaceDetails'][i]['Emotions'], indent=4)))
         emotions = response['FaceDetails'][i]['Emotions']
         for v in emotions:
             labels.update({str(v['Type']).lower(): v['Confidence']})
 
         faces.append(labels)
-    print("got {} faces in picture".format(len(faces)))
+
     return faces
 
 
 def process_image_name(name):
-    # frame_timestamp, object_id, CAMERA_ID, STORE_ID
-    print(name)
+    # frame_timestamp, object_id, CAMERA_ID, STORE_ID, owner_uid
     raw = str(name).split(".")[0]
-    print(raw)
     values = str(raw).split("_")
-    print(values)
     timestamp = values[0]
     object_id = values[1]
     camera_id = values[2]
     store_id = values[3]
     owner_uid = values[4]
-    print("{}, {}, {}, {}, {}".format(timestamp, object_id, camera_id, store_id, owner_uid))
+    print("file params: {}, {}, {}, {}, {}".format(timestamp, object_id, camera_id, store_id, owner_uid))
     return timestamp, store_id, camera_id, object_id, owner_uid
 
 
@@ -73,19 +73,15 @@ def process(event, context):
     print(event)
 
     record = event['Records'][0]['s3']['object']['key']
-    print(record)
     record_for_processing = str(record).split("/")[1]
-    print(record_for_processing)
+    print("got file: {} from bucket".format(record_for_processing))
     timestamp, store_id, camera_id, object_id, owner_uid = process_image_name(record_for_processing)
-
-    print(record)
 
     try:
 
         anots = detect_face_labels(record)
         timestamp_increasment = 0
         for anot in anots:
-            print(anot)
             age_low = anot['age_low']
             age_high = anot['age_high']
             smile = anot['smile']
@@ -99,6 +95,7 @@ def process(event, context):
             sad = anot['sad']
             temp_timestamp = datetime.datetime.fromtimestamp(int(timestamp) + timestamp_increasment).strftime(
                 '%Y-%m-%d %H:%M:%S')
+
             values = '"{}","{}","{}","{}","{}",{},{},{},{},{},{},{},{},{},"{}",{}'.format(owner_uid, store_id,
                                                                                           camera_id, object_id,
                                                                                           temp_timestamp,
